@@ -76,7 +76,7 @@ extern "C" {
 void *open_socket(void *);
 void *recv_file(void *);
 void get_time();
-void ocall_pass_string(unsigned char *str, int hash);
+void ocall_pass_string(unsigned char *str, int hash_value);
 
 #if defined(__cplusplus)
 }
