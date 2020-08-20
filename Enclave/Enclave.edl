@@ -59,7 +59,7 @@ enclave {
      */
     untrusted {
         void ocall_print_string([in, string] const char *str);
-        void ocall_pass_string([[in, size=633] unsigned char *str, int hash_value);
+        void ocall_pass_string([in, size=633] unsigned char *str, int hash_value);
         void ocall_set_file([in, string] char *name, char c1, int num, int num2);
         void ocall_delete_file([in, string] const char *name, char c1, int num);
     };
