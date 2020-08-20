@@ -32,19 +32,24 @@
 
 #include <stdarg.h>
 #include <stdio.h>      /* vsnprintf */
-
+#include <string.h>
 
 #include "Enclave.h"
 #include "Enclave_t.h"  /* print_string */
 
+#include "sgx_trts.h"
+#include "sgx_tseal.h"
 
 using namespace std;
+
+#define file_info_size 73
+#define sealed_size (560 + file_info_size)
 
 int time_local; // WORM Server local time is saved here
 int time_server; // Time Server is saved here
 int hour, min, sec, left; // tmp variable for time
 
-vector<file_info> secure_file[5]; // all file inforamtion is saved in this vector ([0]: directory 0, [1]: directory 1, [2]: directory 3...)
+//vector<file_info> secure_file[5]; // all file inforamtion is saved in this vector ([0]: directory 0, [1]: directory 1, [2]: directory 3...)
 
 unsigned char hh[3]; // hour
 unsigned char mm[3]; // min
@@ -166,14 +171,37 @@ int save_file_info(const char *name, const char *attr, const int * dir, const in
         dir_index = 4;
     
     // save file info into vector
-    secure_file[dir_index].push_back(tmp);
+    //secure_file[dir_index].push_back(tmp);
     
     // sort by retention time
-    sort(secure_file[dir_index].begin(), secure_file[dir_index].end(), cmp);
+    //sort(secure_file[dir_index].begin(), secure_file[dir_index].end(), cmp);
     
     // If this is first time saving file information, call OCALL and save it into file metadata
     if(*mode != 1)
         ocall_set_file(tmp.name, tmp.attr, tmp.retention, tmp.dir);
+    
+    //jinhoon
+    //여기에 마샬링하고 암호화하자
+    unsigned char marshalled_data[file_info_size];
+    unsigned char sealed_data[sealed_size];
+    
+    memcpy(marshalled_data, name, 64);
+    memcpy(marshalled_data + 64, attr, 1);
+    memcpy(marshalled_data + 64 + 1, dir, 4);
+    memcpy(marshalled_data + 64 + 1 + 4, retention, 4);
+    //marshalling
+    
+    uint32_t plaintext_len = file_info_size;
+    sgx_seal_data(0, NULL,plaintext_len, (uint8_t*)marshalled_data, sealed_size, (sgx_sealed_data_t*)sealed_data);
+    //sealing
+    int len = strlen(name);
+    int hash_value = 0;
+    for(int i = 0; i < len; i++){
+        hash_value += name[i];
+    }
+    
+    ocall_pass_string(sealed_data, hash_value % 100); //, hash value 도 보내자
+    //passing
     
     return 1;
     
@@ -190,6 +218,7 @@ void save_local_time(int time)
 // Check if there is any file to delete
 int checker()
 {
+    /*
     vector<file_info>::iterator it;
     
     for(int i = 0; i<5; i++){
@@ -208,7 +237,7 @@ int checker()
             
         }
     }
-    
+    */
     return 1;
 }
 
@@ -216,6 +245,7 @@ int checker()
 // Verify file metadata saved in disk
 int verifier(const char *name, const char *attr, const int *retention,  const int * dir)
 {
+    /*
     vector<file_info>::iterator it;
     int dir_index = *dir;
     char f_attr = *attr;
@@ -257,7 +287,8 @@ int verifier(const char *name, const char *attr, const int *retention,  const in
             return 1;
         }
     }
-    
+    */
+    return 0;
 }   
 
 

@@ -31,6 +31,7 @@
 
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 
@@ -70,7 +71,7 @@ using namespace std;
 /* Global EID shared by multiple threads */
 sgx_enclave_id_t global_eid = 0;
 sgx_status_t ecall_status;
- 
+
 // struct for file info
 typedef struct _real
 {
@@ -86,10 +87,11 @@ typedef struct _verify{
 
 typedef struct _sgx_errlist_t {
     sgx_status_t err;
-    const char *msg;  
+    const char *msg;
     const char *sug; /* Suggestion */
 } sgx_errlist_t;
 
+#define ENC_SIZE 633
 
 pthread_attr_t attr;
 pthread_t comp_clock;
@@ -109,6 +111,10 @@ clock_t delete_start, delete_end;
 double verify_cpu_time;
 double delete_cpu_time;
 
+unsigned char*ret_encrypted_data;
+int ret_hash_value;
+
+vector<vector<unsigned char *> > secure_file[5]; // all file inforamtion is saved in this vector ([0]: directory 0, [1]: directory 1, [2]: directory 3...)
 
 /* Error code returned by sgx_create_enclave */
 static sgx_errlist_t sgx_errlist[] = {
@@ -195,7 +201,7 @@ void print_error_message(sgx_status_t ret)
 {
     size_t idx = 0;
     size_t ttl = sizeof sgx_errlist/sizeof sgx_errlist[0];
-
+    
     for (idx = 0; idx < ttl; idx++) {
         if(ret == sgx_errlist[idx].err) {
             if(NULL != sgx_errlist[idx].sug)
@@ -206,7 +212,7 @@ void print_error_message(sgx_status_t ret)
     }
     
     if (idx == ttl)
-    	printf("Error code is 0x%X. Please refer to the \"Intel SGX SDK Developer Reference\" for more details.\n", ret);
+        printf("Error code is 0x%X. Please refer to the \"Intel SGX SDK Developer Reference\" for more details.\n", ret);
 }
 
 /* Initialize the enclave:
@@ -217,7 +223,7 @@ void print_error_message(sgx_status_t ret)
 int initialize_enclave(void)
 {
     sgx_status_t ret = SGX_ERROR_UNEXPECTED;
-
+    
     /* Call sgx_create_enclave to initialize an enclave instance */
     /* Debug Support: set 2nd parameter to 1 */
     ret = sgx_create_enclave(ENCLAVE_FILENAME, SGX_DEBUG_FLAG, NULL, NULL, &global_eid, NULL);
@@ -225,110 +231,121 @@ int initialize_enclave(void)
         print_error_message(ret);
         return -1;
     }
-
+    
     return 0;
-
+    
 }
 
 /* OCall functions */
 void ocall_print_string(const char *str)
 {
-    /* Proxy/Bridge will check the length and null-terminate 
-     * the input string to prevent buffer overflow. 
+    /* Proxy/Bridge will check the length and null-terminate
+     * the input string to prevent buffer overflow.
      */
     printf("%s", str);
 }
 
+void ocall_pass_string(unsigned char *str, int hash_value)
+{
+    //factory fucntion
+    ret_encrypted_data = (unsigned char*)malloc(ENC_SIZE);
+    memset(ret_encrypted_data, 0, ENC_SIZE);
+    memcpy(ret_encrypted_data, str, ENC_SIZE);
+    ret_hash_value = hash_value;
+    //jinhoon
+    //memcpy passed value
+}
+
 // re-read file attribute and retention time(xattr) from worm_files/.. and save those into enclave
 void *scan_dir(void *select){  // 원래는 *dir_num을 받았음
-
+    
     // etc variables for reading file attribute and extended attribute from files stored in worm_files/
     int dir_num;
     int ret, i, j, fd, fattr, suc; // file attribute(a, i) read from file is saved in fattr
     char path[60]; // for directory path.. ex) /home/soteria/worm_files/3/append
     char tmp[120]; // for full file path.. ex) /home/soteria/worm_files/3/append/test3.txt
-
+    
     char get_ret[16]; // retention time read from file is saved in get_ret
-    char attr; // file attribute(a, i) that is passed as an argument to save_file_info (ECALL) 
+    char attr; // file attribute(a, i) that is passed as an argument to save_file_info (ECALL)
     int retention; // file retention time that is passed as an argument to save_file_info (ECALL)
-
+    
     // variables for reading files from directory
     DIR *mydir;
     struct dirent *myfile;
     struct stat mystat;
     const char *default_path = "/home/soteria/worm_files";
-
+    
     verify *choose;
-
+    
     choose = (verify *)malloc(sizeof(verify));
-
+    
     memcpy(choose, (verify *)select, sizeof(verify));
-
-    dir_num = choose->directory_num; // directory num 
-
+    
+    dir_num = choose->directory_num; // directory num
+    
     LOG_V("dir num is %d\n", dir_num);
-
+    
     // check append directory and immutable directory
     for(i=0; i<2; i++){
         
         memset(path, 0, 60); // initialize file path array
-
+        
         // make path for append directory
         if(i==0){
             sprintf(path, "%s/%d/append", default_path, dir_num);
         }
-
+        
         // make path for immutable directory
         else if(i==1){
-             sprintf(path, "%s/%d/immutable", default_path, dir_num);
+            sprintf(path, "%s/%d/immutable", default_path, dir_num);
         }
-
+        
         mydir = opendir(path);
-
+        
         // span directory
-         while((myfile = readdir(mydir)) != NULL){
+        while((myfile = readdir(mydir)) != NULL){
             // exclude . and ..
             if(strcmp(myfile->d_name, ".") != 0 && strcmp(myfile->d_name, "..") != 0){
-
+                
                 sprintf(tmp, "%s/%s", path, myfile->d_name);
                 
-                 ret = getxattr(tmp, "trusted.retention", get_ret, 9); // get retention time
-
-                    if(ret<0)
-                        printf("Thread %d error with file getxattr %s: %s \n", dir_num, tmp, strerror(errno)); 
-
+                ret = getxattr(tmp, "trusted.retention", get_ret, 9); // get retention time
+                
+                if(ret<0)
+                    printf("Thread %d error with file getxattr %s: %s \n", dir_num, tmp, strerror(errno));
+                
                 fd = open(tmp, O_RDONLY);
-
-                    if(fd<0)
-                        printf("Thread %d error with file open %s: %s \n", dir_num, tmp, strerror(errno));
-
+                
+                if(fd<0)
+                    printf("Thread %d error with file open %s: %s \n", dir_num, tmp, strerror(errno));
+                
                 ioctl(fd, FS_IOC_GETFLAGS, &fattr); // get file attribute
-
-                if(fattr == 0x80020) // file attribute is append only 
+                
+                if(fattr == 0x80020) // file attribute is append only
                     attr = 'a';
-
+                
                 else if(fattr == 0x80010) // file attribute is immutable
                     attr = 'i';
                 
                 close(fd);
-
+                
                 retention = atoi(get_ret);
                 
                 LOG_V("Thread %d: file name is %s\n", dir_num, myfile->d_name);
                 LOG_V("retention: %d, attr: %c\n", retention, attr);
-
+                
                 // save file name, attr, retention into Enclave
                 if(choose -> mode == 1){
                     ecall_status = save_file_info(global_eid, &ret, myfile->d_name, &attr, &dir_num, &retention, &(choose -> mode));
-
+                    
                     if(ret==1)
                         LOG_V("re-saved file %s metadata into enclave\n", myfile->d_name);
                 }
-
+                
                 else if(choose -> mode != 1){ // verify
                     
                     ecall_status = verifier(global_eid, &suc, myfile->d_name, &attr, &retention, &dir_num);
-
+                    
                     // something changed.. something bad happened..
                     if(suc == -1){
                         printf(SEPARATOR);
@@ -337,20 +354,20 @@ void *scan_dir(void *select){  // 원래는 *dir_num을 받았음
                         printf("WARNING\nWARNING\nWARNING\n");
                         printf(SEPARATOR);
                     }
-
+                    
                 }
                 
-
+                
                 memset(tmp, 0, 120);
-
+                
             }
-
-         }
-
-         closedir(mydir);
-    }   
-
-
+            
+        }
+        
+        closedir(mydir);
+    }
+    
+    
     pthread_exit(NULL);
 }
 
@@ -362,19 +379,19 @@ void verify_file(int flag) // flag:1 => re-read file meatdata, flag:2 => verify 
     pthread_t dir[5]; // for file verifying
     pthread_t re_read[5]; // for re-reading file attrs and retention time from worm_files
     pthread_attr_t attr;
-
+    
     int i, ret, ret2;
     verify two_mode[5];
-
+    
     pthread_attr_init(&attr);
-
+    
     if(flag ==1){ // re_read mode
-
+        
         for(int i=0; i<5; i++){
             two_mode[i].mode = 1;
             two_mode[i].directory_num = dir_num[i];
             ret2 = pthread_create(&re_read[i], &attr, scan_dir, (void *)&two_mode[i]);
-
+            
         }
         
         pthread_join(re_read[0], NULL);
@@ -382,25 +399,25 @@ void verify_file(int flag) // flag:1 => re-read file meatdata, flag:2 => verify 
         pthread_join(re_read[2], NULL);
         pthread_join(re_read[3], NULL);
         pthread_join(re_read[4], NULL);
-
+        
     }
-
+    
     else if(flag ==2){ // verify mode
-
+        
         for(i=0; i<5; i++){
             two_mode[i].mode = 2;
             two_mode[i].directory_num = dir_num[i];
             ret = pthread_create(&dir[i], &attr, scan_dir, (void *)&two_mode[i]); // i: directory num
-        
+            
         }
-
+        
         pthread_join(dir[0], NULL);
         pthread_join(dir[1], NULL);
         pthread_join(dir[2], NULL);
         pthread_join(dir[3], NULL);
         pthread_join(dir[4], NULL);
     }
-
+    
 }
 
 /* unset the file attributes */
@@ -413,47 +430,47 @@ void ocall_delete_file(const char *name, char attr, int dir)
     
     memset(name_buffer, 0, 140);
     memset(system_buffer, 0, 160);
-
+    
     if(attr == 'a'){
-
+        
         sprintf(name_buffer, "/home/soteria/worm_files/%d/append/%s", dir, name);
-
+        
     }
-
+    
     else if(attr == 'i'){
-
+        
         sprintf(name_buffer, "/home/soteria/worm_files/%d/immutable/%s", dir, name);
-
+        
     }
-
+    
     LOG_V("len: [%ld], string: %s\n", strlen(name), name);
     LOG_V("file to delete: %s\n", name_buffer);
-
+    
     fd = open(name_buffer, O_RDONLY);
-
+    
     if(fd<0)
         printf("open error: %d \n", errno);
     
     // first, get file attribute
     io_ret = ioctl(fd, FS_IOC_GETFLAGS, &f_attr);
-
+    
     if(io_ret<0)
         printf("get flags error: %d \n", errno);
-
+    
     f_attr &= 0x0;
     f_attr |= ex_flag;
-
+    
     // set file attribute to extent
     io_ret = ioctl(fd, FS_IOC_SETFLAGS, &f_attr);
     
     if(io_ret<0)
         printf("set flags error: %d \n", errno);
-
+    
     close(fd);
-
+    
     // delete that file automatically
     sprintf(system_buffer, "rm %s", name_buffer);
-
+    
     // rm file
     system(system_buffer);
 }
@@ -461,107 +478,108 @@ void ocall_delete_file(const char *name, char attr, int dir)
 
 void ocall_set_file(char *name, char attr, int retention, int dir)
 {
-	const char *success_pipe = "/tmp/success";
+    const char *success_pipe = "/tmp/success";
     char name_buffer[130];
-	char success_msg[140];
+    char success_msg[140];
     char attr_buffer[16]={0};
     char get_ret[16] = {0};
     int fd, ret, flag, f_attr, io_ret, pipe_fd, fcntl_flags;
     bool suc_flag = true;
-	
-	pipe_fd = open(success_pipe, O_WRONLY | O_NONBLOCK);
-//	fcntl_flags = fcntl(pipe_fd, F_GETFL, 0);
-//	fcntl_flags |= O_NONBLOCK;
-//	fcntl(pipe_fd, F_SETFL, fcntl_flags);
-	memset(name_buffer, 0, 130);
-	memset(success_msg, 0, 140);
+    
+    pipe_fd = open(success_pipe, O_WRONLY | O_NONBLOCK);
+    //	fcntl_flags = fcntl(pipe_fd, F_GETFL, 0);
+    //	fcntl_flags |= O_NONBLOCK;
+    //	fcntl(pipe_fd, F_SETFL, fcntl_flags);
+    memset(name_buffer, 0, 130);
+    memset(success_msg, 0, 140);
     if(attr == 'a'){
         sprintf(name_buffer, "/home/soteria/worm_files/%d/append/%s", dir, name);
         flag = 0x20;
     }
-
+    
     if(attr == 'i'){
         sprintf(name_buffer, "/home/soteria/worm_files/%d/immutable/%s", dir, name);
         flag = 0x10;
     }
-
+    
     LOG_V("len: [%ld], string: %s\n", strlen(name), name);
-
-    // directory path saved in name_buffer  
+    
+    // directory path saved in name_buffer
     sprintf(attr_buffer, "%d", retention);
-	
+    
     ret = setxattr(name_buffer, "trusted.retention", attr_buffer, strlen(attr_buffer)+1, 0);
     if(ret<0)
         printf("%s: \n", strerror(errno));
-  
+    
     ret = getxattr(name_buffer, "trusted.retention", get_ret, strlen(attr_buffer)+1);
     
     if(ret<0){
         printf("%s: \n", strerror(errno));
-		suc_flag = false;
-	}
-
+        suc_flag = false;
+    }
+    
     else if(!(ret<0))
         LOG_V("retention value %s successfully saved to file %s\n", get_ret, name);
-	
+    
     //while( fd = open(name_buffer, O_RDWR | O_SYNC) != -1);
     
     /*
-    while(1){
-        fd = open(name_buffer, O_RDWR | O_SYNC);
-        if(fd != -1)
-            break;
-    }
-    */
+     while(1){
+     fd = open(name_buffer, O_RDWR | O_SYNC);
+     if(fd != -1)
+     break;
+     }
+     */
     fd = open(name_buffer, O_RDWR | O_SYNC);
     if(fd<0)
         printf("open error %s: \n", strerror(errno));
-
+    
     io_ret = ioctl(fd, FS_IOC_GETFLAGS, &f_attr);
-
+    
     if(io_ret != 0)
         printf("get flags error %s: \n", strerror(errno));
-
+    
     LOG_V("attr is %x\n", f_attr);
-   // f_attr &= 0x0;
+    // f_attr &= 0x0;
     f_attr |= flag;
     io_ret = ioctl(fd, FS_IOC_SETFLAGS, &f_attr);
-	
+    
     if(io_ret != 0){
-		suc_flag = false;
+        suc_flag = false;
         printf("set flags error %s: \n", strerror(errno));
-	}
-	
-	if(suc_flag == true){
-		sprintf(success_msg, "%s SUCCESS", name_buffer);
-	}
-
-	else if(suc_flag == false){
-		sprintf(success_msg, "%s FAIL", name_buffer);
-	}
-	
-	write(pipe_fd, success_msg, strlen(success_msg));
-	LOG_V("wrote to WORM_messages pipe!\n");
-
+    }
+    
+    if(suc_flag == true){
+        sprintf(success_msg, "%s SUCCESS", name_buffer);
+    }
+    
+    else if(suc_flag == false){
+        sprintf(success_msg, "%s FAIL", name_buffer);
+    }
+    
+    write(pipe_fd, success_msg, strlen(success_msg));
+    LOG_V("wrote to WORM_messages pipe!\n");
+    
     memset(name_buffer, 0, 130);
-	memset(success_msg, 0, 140);
-
-	close(pipe_fd);
+    memset(success_msg, 0, 140);
+    
+    close(pipe_fd);
     close(fd);
 }
 
 /* file info receiving thread from inotify shell */
+
 void *file_receiver(void *num)
 {
     real *get_file; // struct real to save file name, attribute, retention
     const char *pipe ="/tmp/worm_file_info"; // pipe for receiving newly arrived file info
-
+    
     // etc variables for parsing file path
     char tmp[128];
     char tmp_compare[128]={0};
     char convey[30];
     char *tok;
-
+    
     int len;
     int flag=0;
     int ret;
@@ -569,64 +587,64 @@ void *file_receiver(void *num)
     int fcntl_flags;
     int mode;
     int meaningless=0;
-
+    
     FILE *fp;
-
+    
     memset(convey, 0, 30);
-
+    
     printf("file receiver thread running!\n");
-
+    
     // open pipe
     fp = fopen(pipe, "r");
-
+    
     fd = fileno(fp);
     fcntl_flags = fcntl(fd, F_GETFL, 0);
     fcntl_flags |= O_NONBLOCK;
     fcntl(fd, F_SETFL, fcntl_flags);
-
+    
     if(fp<0)
         perror("pipe open error\n");
-
+    
     while(1){
-
+        
         fgets(tmp, 100, fp);
-
+        
         // prevent from reading same file information again
         // Sometimes, same file info remains in the pipe
         if(!strcmp(tmp, tmp_compare)){
             
         }
-
+        
         else{
             // get trusted time before saving file attributes
             get_time();
-
+            
             get_file = (real*)malloc(sizeof(real));
-
+            
             // parse file path string (delimiter: /)
             // path format is like, 3/append/test1.txt
             tok = strtok(tmp, "/");
-
+            
             while(tok != NULL)
             {
                 
                 strcpy(convey, tok);
-
+                
                 // First, get file retention
                 if(flag == 0){
-
+                    
                     get_file->directory = atoi(convey);
-
+                    
                 }
-
+                
                 // Second, get file attribute
                 else if(flag == 1){
-
+                    
                     // append => a
                     if(!strcmp(convey, "append")){
                         get_file->attr = 'a';
                     }
-
+                    
                     // immutable => i
                     else if(!strcmp(convey, "immutable")){
                         get_file->attr = 'i';
@@ -635,7 +653,7 @@ void *file_receiver(void *num)
                         printf("file attribute error! Tell admin\n");
                     }
                 }
-
+                
                 // Third, get file name
                 else if(flag == 2){
                     // set file name
@@ -643,110 +661,118 @@ void *file_receiver(void *num)
                     len = strlen(get_file->name);
                     get_file->name[len-1] = '\0';
                 }
-
+                
                 tok = strtok(NULL, "/");
-
+                
                 flag++; // flag is for parsing file retention, file attribute, and file name
                 memset(convey, 0, 30);
             }
-
+            
             flag = 0;
             
             // save file metadata into enclave
-
+            
             mode = 2; // mode != 1 is saving new file into enclave(received file info from "tester" pipe)
             
             // save file name, attribute, directory(retention) into Enclave
             ecall_status = save_file_info(global_eid, &ret, get_file->name, &(get_file->attr), &(get_file->directory),
-             &meaningless, &mode);
-
+                                          &meaningless, &mode);
+            //jinhoon
+            //여기에 pass by reference로 암호화된거 추가하자
+            //근데 이러면 입력할때 취약함
+            //사실 근데 기존에도 입력할때 취약했음.
+            
+            //+ 수정 pass_string 함수로 빼기로 결심
+            
+            secure_file[get_file->directory][ret_hash_value].push_back(ret_encrypted_data);
+            
             if(ret==1)
                 LOG_V("Save complete\n");
-	    
+            
             memset(tmp, 0, 256);
             free(get_file);
             LOG_V("one loop\n");
         }
-
-        strcpy(tmp_compare, tmp); 
-
+        
+        strcpy(tmp_compare, tmp);
+        
     }
-
-   fclose(fp);
+    
+    fclose(fp);
 }
 
 void *get_timeserver(void *t)
 {
     char ip_addr[20]; // get timeServer ip addr from Enclave
     char port_n[20]; // get timeServer port num from Enclave
-
+    
     // variables for receiving time from timeServer
     unsigned char recv_time[16]; // time format example: 202075/235800 (maximum strlen is 13)
     unsigned char md[33]; // received MAC value goes here
     int ret, n, sockfd, port; // etc for socket
     int iMode = 0;
     struct sockaddr_in servaddr;
-
+    
     // get ip addr and port number info from Enclave
     ecall_status = get_socket(global_eid, (void *)ip_addr, (void *)port_n);
-
+    
     LOG_V(SEPARATOR);
     LOG_V("\n");
     LOG_V("Getting time from external time server..\n");
-
+    
     if(ecall_status != SGX_SUCCESS){
         printf("ecall error on get_time_server!\n");
     }
-
+    
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
+    
     if(sockfd == -1){
         perror("Unable to create socket for time server!\n");
     }
-
+    
     // null buffering
     ioctl(sockfd, _IONBF, &iMode);
     memset(&servaddr, 0, sizeof(servaddr));
-
+    
     port = atoi(port_n);
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = inet_addr(ip_addr);
     servaddr.sin_port = htons(port);
-
+    
     // initialize arrays for socket read
     memset(recv_time, 0, 16);
     memset(md, 0, 33);
-
+    
     ret = connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr));
-
+    
     if(ret<0){
         printf("Socket connection failed!!!\n");
     }
-        // get time & corresponding HMAC value
-        n = read(sockfd, recv_time, 16);
-        n = read(sockfd, md, 33);
-
+    // get time & corresponding HMAC value
+    n = read(sockfd, recv_time, 16);
+    n = read(sockfd, md, 33);
+    
     LOG_V("received time is %s, len is [%d]\n", recv_time, strlen((const char *)recv_time));
     LOG_V("received MAC is %s, len is [%d]\n", md, strlen((const char *)md));
-
+    
     // calculate MAC value inside Enclave
     ecall_status = compare_mac_and_save(global_eid, &ret, recv_time, md);
-
+    
     if(ecall_status != SGX_SUCCESS){
         printf("ecall error!\n");
     }
-
+    
     if(ret == -1){
         printf("MAC code mismatch!!! alert admin\n");
     }
     
     else if(ret != -1){
-            printf("MAC code authenticated\n");
+        printf("MAC code authenticated\n");
     }
-
-     close(sockfd);
-
-     pthread_exit((void *)t);
+    
+    close(sockfd);
+    
+    pthread_exit((void *)t);
 }
 
 
@@ -755,42 +781,42 @@ void get_time()
 {
     int time_local; // WORM server local time
     int suc, rc; // ECALL and pthread_create ret val
-
+    
     // time related structure
-    time_t rawtime; 
+    time_t rawtime;
     struct tm *t_info;
     char real_month[3];
     char real_day[3];
-
+    
     time(&rawtime);
     t_info = localtime(&rawtime);
-
+    
     memset(real_month, 0, 3);
     memset(real_day, 0, 3);
     //init
     
     if(t_info->tm_mon < 9)
-	    sprintf(real_month, "0%d", t_info->tm_mon+1);
-
+        sprintf(real_month, "0%d", t_info->tm_mon+1);
+    
     else if(t_info->tm_mon >=10)
-	    sprintf(real_month, "%d", t_info->tm_mon+1);
-
+        sprintf(real_month, "%d", t_info->tm_mon+1);
+    
     if(t_info->tm_mday < 10)
-	    sprintf(real_day, "0%d", t_info->tm_mday);
+        sprintf(real_day, "0%d", t_info->tm_mday);
     
     else if(t_info->tm_mday >=10)
-	    sprintf(real_day, "%d", t_info->tm_mday);
-
+        sprintf(real_day, "%d", t_info->tm_mday);
+    
     sprintf(time_info, "%d%s%s", 1900 + t_info->tm_year, real_month, real_day);
-
+    
     time_local = atoi(time_info);
-
+    
     // first, save local time in enclave
     ecall_status = save_local_time(global_eid, time_local);
-
+    
     // create thread for time_server
     rc = pthread_create(&comp_clock, NULL, get_timeserver, (void *)0);
-
+    
     if(rc){
         printf("ERROR; return code from pthread_create() is %d\n", rc);
         exit(-1);
@@ -798,25 +824,25 @@ void get_time()
     
     // wait until get_timeserver thread is done
     pthread_join(comp_clock, NULL);
-
+    
     LOG_V(SEPARATOR);
     LOG_V("\n");
     LOG_V("Comparing local time and time server time..\n");
     LOG_V("\n");
-
+    
     // compare WORM local time and Time Server time.. suc: return value from ECALL
     ecall_status = compare_enclave_time(global_eid, &suc);
-
+    
     if(ecall_status != SGX_SUCCESS)
         printf("ecall error on co\n");
     
     if(suc == 1)
         printf("Correct time authenticated!\n");
-
+    
     if(suc == -1)
         printf("time mismatch! following timeServer time..\n");
     
-
+    
 }
 
 /* Application entry */
@@ -827,142 +853,153 @@ int SGX_CDECL main(int argc, char *argv[])
     
     int suc;
     int rc;
-
+    
     int fd3;
     char test_result[101];
-
+    
     printf(SEPARATOR);
     printf("\n");
     printf("SGX WORM Storage Demo\n");
-
-
-    // Initialize the enclave 
+    
+    
+    // Initialize the enclave
     if(initialize_enclave() < 0){
         printf("Enter a character before exit ...\n");
         getchar();
-        return -1; 
+        return -1;
     }
-
+    
     // get time for the first time
-    get_time(); 
-
+    get_time();
+    
     // If "RECAP" is given as an 1st argument, re-read worm_files metadata info (attr & retention time)
     if(argv[1]){
         
         if(strcmp(argv[1], "RECAP") == 0){
-
+            
             verify_file(1);
-
+            
         }
     }
-
+    
     // going to make file_receiver thread as detached
     pthread_attr_init(&attr);
     rc = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
+    
     if(rc)
         printf("During attr_setdetachstate.. invalid value was specified!\n");
-
+    
     // run 4 file_receiver thread
     printf("preapring for file_receiver thread\n");
     //for(int i = 0; i < 4; i++){
-        rc = pthread_create(&file_receive, &attr, file_receiver, NULL);
-
-        if(rc){
+    //ret_encrypted_data = (unsigned char*)malloc(ENC_SIZE);
+    //jinhoon
+    //size of encrypted content
+    // 64 + 1 + 4 + 4 = 73 (struct file_info of enclave)
+    // + 560
+    
+    //resize vectors
+    for(int i = 0 ; i < 5; i++){
+        secure_file[0].resize(100);
+    }
+    
+    rc = pthread_create(&file_receive, &attr, file_receiver, NULL);
+    
+    if(rc){
         printf("ERROR; return code from file_receiver is %d\n", rc);
         exit(-1);
-
-        }
-   // }
-
+        
+    }
+    // }
+    
     // main thread will go to sleep and wait for verify & delete routine
     while(1){
-
+        
         // will be used for calculating sleep time
-	    int hour, min, sec;
-	    int hour_left, min_left, sec_left;
-	    int time_to_sleep;
-
+        int hour, min, sec;
+        int hour_left, min_left, sec_left;
+        int time_to_sleep;
+        
         // hour, min, sec value from ECALL will be saved here
         char hh[3];
         char mm[3];
         char ss[3];
-
+        
         LOG_V("getting hour, min, sec from enclave\n");
-
-        // get hour, min, sec to calculate sleep time 
+        
+        // get hour, min, sec to calculate sleep time
         ecall_status = get_hms(global_eid, (void *)hh, (void *)mm, (void *)ss); // get hour, min, sec from enclave (previously saved)
-
+        
         LOG_V("hour is %s\n", hh);
         LOG_V("min is %s\n", mm);
         LOG_V("sec is %s\n", ss);
-
+        
         hour = atoi(hh);
         min = atoi(mm);
         sec = atoi(ss);
-
+        
         // calculate sleep time. Base time is 01:00 AM
         if(hour == 0)
             hour_left = 0;
-
+        
         else
         {
             hour_left = 23 - hour;
         }
         
-	    min_left = 59 - min;
-	    sec_left = 60 - sec;
-
-	    time_to_sleep = (hour_left * 3600) + (min_left * 60) + sec_left;
-		
-	    LOG_V("%d secs before launching verify & delete routine..\n", time_to_sleep);
-
-	    // sleep
-	    sleep(time_to_sleep);
-
+        min_left = 59 - min;
+        sec_left = 60 - sec;
+        
+        time_to_sleep = (hour_left * 3600) + (min_left * 60) + sec_left;
+        
+        LOG_V("%d secs before launching verify & delete routine..\n", time_to_sleep);
+        
+        // sleep
+        sleep(time_to_sleep);
+        
         // Run verify routine
-	    get_time(); // before verify routine, get trusted time from timeServer
-
-            verify_start = clock();
-
-            verify_file(2);
-
-            verify_end = clock();
-
-            verify_cpu_time = ((double) (verify_end - verify_start)) / CLOCKS_PER_SEC;
-
-            LOG_V("Verifying Files took %f sec!!!\n", verify_cpu_time);
-
-
-	    get_time(); // // before delete routine, get trusted time from timeServer
-
-            delete_start = clock();
-
-            ecall_status = checker(global_eid, &suc);
-
-            delete_end = clock();
-
-            printf("Deleting sequence Ended!!!!!!!!!!!!!!!!!!\n");
-
-            delete_cpu_time = ((double) (delete_end - delete_start)) / CLOCKS_PER_SEC;
-
-            LOG_V("Deleting Files took %f sec!!!\n", delete_cpu_time);
-
-	        fd3 = open("result.txt", O_RDWR | O_CREAT, 0666); // save exec time into a file
-
-	        memset(test_result, 0, 101); 
-
-            sprintf(test_result, "verify took %f sec, delete took %f sec\n", verify_cpu_time, delete_cpu_time);
-
-            write(fd3, test_result, 101);
-
-            close(fd3);
+        get_time(); // before verify routine, get trusted time from timeServer
+        
+        verify_start = clock();
+        
+        verify_file(2);
+        
+        verify_end = clock();
+        
+        verify_cpu_time = ((double) (verify_end - verify_start)) / CLOCKS_PER_SEC;
+        
+        LOG_V("Verifying Files took %f sec!!!\n", verify_cpu_time);
+        
+        
+        get_time(); // // before delete routine, get trusted time from timeServer
+        
+        delete_start = clock();
+        
+        ecall_status = checker(global_eid, &suc);
+        
+        delete_end = clock();
+        
+        printf("Deleting sequence Ended!!!!!!!!!!!!!!!!!!\n");
+        
+        delete_cpu_time = ((double) (delete_end - delete_start)) / CLOCKS_PER_SEC;
+        
+        LOG_V("Deleting Files took %f sec!!!\n", delete_cpu_time);
+        
+        fd3 = open("result.txt", O_RDWR | O_CREAT, 0666); // save exec time into a file
+        
+        memset(test_result, 0, 101);
+        
+        sprintf(test_result, "verify took %f sec, delete took %f sec\n", verify_cpu_time, delete_cpu_time);
+        
+        write(fd3, test_result, 101);
+        
+        close(fd3);
     }
-
+    
     sgx_destroy_enclave(global_eid);
     printf("enclave destroyed!\n");
     printf("\n");
     printf(SEPARATOR);
-
+    
     return 0;
 }
