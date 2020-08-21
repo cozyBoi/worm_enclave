@@ -337,14 +337,42 @@ void *scan_dir(void *select){  // 원래는 *dir_num을 받았음
                 // save file name, attr, retention into Enclave
                 if(choose -> mode == 1){
                     ecall_status = save_file_info(global_eid, &ret, myfile->d_name, &attr, &dir_num, &retention, &(choose -> mode));
-                    
+                    //jinhoon
+                    //여기서 리턴된 sealed_data를 저장하는 코드가 필요
                     if(ret==1)
                         LOG_V("re-saved file %s metadata into enclave\n", myfile->d_name);
                 }
                 
                 else if(choose -> mode != 1){ // verify
                     
-                    ecall_status = verifier(global_eid, &suc, myfile->d_name, &attr, &retention, &dir_num);
+                    int len = strlen(myfile->d_name);
+                    int hash_value = 0;
+                    for(int i = 0; i < len; i++){
+                        hash_value += myfile->d_name[i];
+                    }
+                    hash_value %= 100;
+                    //jinhoon
+                    //make hash value
+                    
+                    //안에서 돌리던 이터레이션을 여기서 돌게 해야함
+                    //[dir_num][hash_value]가 벡터인데 이를 쭉 확인해야함
+                    int dir_index = 0;
+                    if(dir_num == 1)
+                        dir_index = 0;
+                    if(dir_num==3)
+                        dir_index = 1;
+                    else if(dir_num==5)
+                        dir_index = 2;
+                    else if(dir_num==7)
+                        dir_index = 3;
+                    else if(dir_num==10)
+                        dir_index = 4;
+                    for(auto&tmp : secure_file[dir_index][hash_value]){
+                        ecall_status = verifier(global_eid, &suc, myfile->d_name, &attr, &retention, &dir_num);
+                    }
+                    //ecall_status = verifier(global_eid, &suc, myfile->d_name, &attr, &retention, &dir_num);
+                    
+                    
                     
                     // something changed.. something bad happened..
                     if(suc == -1){

@@ -243,15 +243,53 @@ int checker()
 
 
 // Verify file metadata saved in disk
-int verifier(const char *name, const char *attr, const int *retention,  const int * dir)
+int verifier(const char *name, const char *attr, const int *retention,  const int * dir, unsigned char sealed_data)
 {
+    //jinhoon
+    char plaintext[file_info_size];
+    uint32_t plaintext_len = file_info_size;
+    sgx_unseal_data((sgx_sealed_data_t*)sealed_data, NULL, NULL, (uint8_t*)plaintext, &plaintext_len);
+    
+    char _name[64];
+    char _attr;
+    int _dir;
+    int _retention;
+    
+    strcpy(_name, plaintext, 64);
+    strcpy(_attr, &plaintext[64], 1);
+    strcpy(_dir, &plaintext[65], 4);
+    strcpy(_retention, &plaintext[69], 4);
+    
+    if(!strcmp(name, _name)){
+        
+        if(f_attr == _attr){
+            
+            if(ret == _retention){
+                
+                
+            }
+            
+            else{
+                return -1;
+            }
+            
+        }
+        
+        else{
+            return -1;
+        }
+        // no problem
+        return 1;
+    }
+    
     /*
     vector<file_info>::iterator it;
     int dir_index = *dir;
     char f_attr = *attr;
     int ret = *retention;
+    */
     
-    
+    /*
     if(dir_index == 1)
         dir_index = 0;
     if(dir_index==3)
@@ -262,7 +300,9 @@ int verifier(const char *name, const char *attr, const int *retention,  const in
         dir_index = 3;
     else if(dir_index==10)
         dir_index = 4;
+    */
     
+    /*
     for(it = secure_file[dir_index].begin(); it != secure_file[dir_index].end(); it++){
         
         if(!strcmp(name, it->name)){
