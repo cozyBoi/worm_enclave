@@ -260,9 +260,9 @@ int verifier(const char *name, const char *attr, const int *retention,  const in
     int _retention;
     
     memcpy(_name, plaintext, 64);
-    memcpy(_attr, &plaintext[64], 1);
-    memcpy(_dir, &plaintext[65], 4);
-    memcpy(_retention, &plaintext[69], 4);
+    memcpy(&_attr, &plaintext[64], 1);
+    memcpy(&_dir, &plaintext[65], 4);
+    memcpy(&_retention, &plaintext[69], 4);
     
     if(!strcmp(name, _name)){
         
