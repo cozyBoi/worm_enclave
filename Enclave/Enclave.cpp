@@ -243,7 +243,7 @@ int checker()
 
 
 // Verify file metadata saved in disk
-int verifier(const char *name, const char *attr, const int *retention,  const int * dir, unsigned char sealed_data)
+int verifier(const char *name, const char *attr, const int *retention,  const int * dir, unsigned char*sealed_data)
 {
     //jinhoon
     int dir_index = *dir;

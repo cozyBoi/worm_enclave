@@ -61,7 +61,7 @@ void get_hms(void *, void *, void *);
 int compare_mac_and_save(const unsigned char *, const unsigned char *); 
 int compare_enclave_time();
 int checker();
-int verifier(const char *, const char *, const int *, const int *);
+int verifier(const char *, const char *, const int *, const int *,unsigned char*);
 
 typedef struct _file_info
 {

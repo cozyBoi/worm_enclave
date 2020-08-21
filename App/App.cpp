@@ -368,7 +368,7 @@ void *scan_dir(void *select){  // 원래는 *dir_num을 받았음
                     else if(dir_num==10)
                         dir_index = 4;
                     for(auto&tmp : secure_file[dir_index][hash_value]){
-                        ecall_status = verifier(global_eid, &suc, myfile->d_name, &attr, &retention, &dir_num);
+                        ecall_status = verifier(global_eid, &suc, myfile->d_name, &attr, &retention, &dir_num, tmp);
                     }
                     //ecall_status = verifier(global_eid, &suc, myfile->d_name, &attr, &retention, &dir_num);
                     
