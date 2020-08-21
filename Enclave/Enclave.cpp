@@ -246,6 +246,10 @@ int checker()
 int verifier(const char *name, const char *attr, const int *retention,  const int * dir, unsigned char sealed_data)
 {
     //jinhoon
+    int dir_index = *dir;
+    char f_attr = *attr;
+    int ret = *retention;
+    
     char plaintext[file_info_size];
     uint32_t plaintext_len = file_info_size;
     sgx_unseal_data((sgx_sealed_data_t*)sealed_data, NULL, NULL, (uint8_t*)plaintext, &plaintext_len);
@@ -255,10 +259,10 @@ int verifier(const char *name, const char *attr, const int *retention,  const in
     int _dir;
     int _retention;
     
-    strcpy(_name, plaintext, 64);
-    strcpy(_attr, &plaintext[64], 1);
-    strcpy(_dir, &plaintext[65], 4);
-    strcpy(_retention, &plaintext[69], 4);
+    memcpy(_name, plaintext, 64);
+    memcpy(_attr, &plaintext[64], 1);
+    memcpy(_dir, &plaintext[65], 4);
+    memcpy(_retention, &plaintext[69], 4);
     
     if(!strcmp(name, _name)){
         
