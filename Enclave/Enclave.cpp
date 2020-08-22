@@ -232,12 +232,12 @@ int checker(unsigned char*sealed_data)
     memcpy(&_dir, &plaintext[65], 4);
     memcpy(&_retention, &plaintext[69], 4);
     
-    if(it->retention > time_server)
+    if(_retention > time_server)
         return 0;
     
     // file to delete
     else{
-        ocall_delete_file(it->name, it->attr, it->dir);
+        ocall_delete_file(_name, _attr, _dir);
         return -1;
     }
     
