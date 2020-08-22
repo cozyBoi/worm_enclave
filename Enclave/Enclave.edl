@@ -48,7 +48,7 @@ enclave {
         public void get_socket([user_check] void *str1, [user_check] void *str2);
         public void get_hms([user_check] void *hour, [user_check] void *min, [user_check] void *sec);
         public int compare_enclave_time();
-        public int checker();
+        public int checker(unsigned char*sealed_data);
         public int verifier([in, string] const char *name, [in] const char *attr, [in] const int *retention, [in] const int *dir, [in, size=633]unsigned char*sealed_data);
     };
 

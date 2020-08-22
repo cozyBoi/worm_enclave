@@ -60,7 +60,7 @@ void get_socket(void *, void *);
 void get_hms(void *, void *, void *);
 int compare_mac_and_save(const unsigned char *, const unsigned char *); 
 int compare_enclave_time();
-int checker();
+int checker(unsigned char*sealed_data);
 int verifier(const char *, const char *, const int *, const int *,unsigned char*);
 
 typedef struct _file_info

@@ -216,8 +216,31 @@ void save_local_time(int time)
 
 
 // Check if there is any file to delete
-int checker()
+int checker(unsigned char*sealed_data)
 {
+    char plaintext[file_info_size];
+    uint32_t plaintext_len = file_info_size;
+    sgx_unseal_data((sgx_sealed_data_t*)sealed_data, NULL, NULL, (uint8_t*)plaintext, &plaintext_len);
+    
+    char _name[64];
+    char _attr;
+    int _dir;
+    int _retention;
+    
+    memcpy(_name, plaintext, 64);
+    memcpy(&_attr, &plaintext[64], 1);
+    memcpy(&_dir, &plaintext[65], 4);
+    memcpy(&_retention, &plaintext[69], 4);
+    
+    if(it->retention > time_server)
+        return 0;
+    
+    // file to delete
+    else{
+        ocall_delete_file(it->name, it->attr, it->dir);
+        return -1;
+    }
+    
     /*
     vector<file_info>::iterator it;
     

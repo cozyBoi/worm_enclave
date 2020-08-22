@@ -1003,7 +1003,19 @@ int SGX_CDECL main(int argc, char *argv[])
         
         delete_start = clock();
         
-        ecall_status = checker(global_eid, &suc);
+        //jinhoon
+        //if retention time exceeded, remove file
+        for(int i = 0; i < 5; i++){
+            for(int j = 0; j < secure_file[i].size(); j++){
+                for(int u = 0; u < secure_file[i][j].size(); u++){
+                    ecall_status = checker(global_eid, &suc, secure_file[i][j][u]);
+                    if(suc == -1){
+                        secure_file[i][j].erase(secure_file[i][j].begin()+u);
+                    }
+                }
+            }
+        }
+        //ecall_status = checker(global_eid, &suc);
         
         delete_end = clock();
         
