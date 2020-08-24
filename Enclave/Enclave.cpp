@@ -225,7 +225,9 @@ int checker(unsigned char*sealed_data)
     uint32_t plaintext_len = file_info_size;
     sgx_unseal_data((sgx_sealed_data_t*)sealed_data, NULL, NULL, (uint8_t*)plaintext, &plaintext_len);
     
-    ocall_print_hex(plaintext, file_info_size);
+    unsigned char debug_txt[file_info_size];
+    memcpy(debug_txt, plaintext, file_info_size);
+    ocall_print_hex(debug_txt, file_info_size);
     
     char _name[64];
     char _attr;
@@ -282,7 +284,9 @@ int verifier(const char *name, const char *attr, const int *retention,  const in
     uint32_t plaintext_len = file_info_size;
     sgx_unseal_data((sgx_sealed_data_t*)sealed_data, NULL, NULL, (uint8_t*)plaintext, &plaintext_len);
     
-    ocall_print_hex(plaintext, file_info_size);
+    unsigned char debug_txt[file_info_size];
+    memcpy(debug_txt, plaintext, file_info_size);
+    ocall_print_hex(debug_txt, file_info_size);
     
     char _name[64];
     char _attr;
