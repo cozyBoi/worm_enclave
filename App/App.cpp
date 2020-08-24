@@ -908,8 +908,22 @@ int SGX_CDECL main(int argc, char *argv[])
         getchar();
         return -1;
     }
+    //jinhoon
+    //resize vectors
+    for(int i = 0 ; i < 5; i++){
+        secure_file[0].resize(100);
+    }
     
+    //for debug
+    char _name[] = "hello";
+    char _attr = 0;
+    int _dir = 1;
+    int _retention = 10;
+    int _mode = 0;
+    save_file_info(&_name, &_attr, &_dir, &_retention, &_mode);
+    checker(ret_encrypted_data);
     // get time for the first time
+    /*
     get_time();
     
     // If "RECAP" is given as an 1st argument, re-read worm_files metadata info (attr & retention time)
@@ -937,11 +951,6 @@ int SGX_CDECL main(int argc, char *argv[])
     //size of encrypted content
     // 64 + 1 + 4 + 4 = 73 (struct file_info of enclave)
     // + 560
-    
-    //resize vectors
-    for(int i = 0 ; i < 5; i++){
-        secure_file[0].resize(100);
-    }
     
     rc = pthread_create(&file_receive, &attr, file_receiver, NULL);
     
@@ -1052,6 +1061,7 @@ int SGX_CDECL main(int argc, char *argv[])
     printf("enclave destroyed!\n");
     printf("\n");
     printf(SEPARATOR);
+    */
     
     return 0;
 }
