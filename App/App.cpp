@@ -245,6 +245,18 @@ void ocall_print_string(const char *str)
     printf("%s", str);
 }
 
+void ocall_print_hex(unsigned char *str, int len)
+{
+    /* Proxy/Bridge will check the length and null-terminate
+     * the input string to prevent buffer overflow.
+     */
+     printf("size : %d\n", len);
+     for(int i = 0; i < len; i++){
+         printf("%.2x", str[i]);
+     }
+     printf("\n");
+}
+
 void ocall_pass_string(unsigned char *str, int hash_value)
 {
     //factory fucntion

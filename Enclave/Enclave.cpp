@@ -191,6 +191,8 @@ int save_file_info(const char *name, const char *attr, const int * dir, const in
     memcpy(marshalled_data + 64 + 1 + 4, retention, 4);
     //marshalling
     
+    ocall_print_hex(marshalled_data, file_info_size);
+    
     uint32_t plaintext_len = file_info_size;
     sgx_seal_data(0, NULL,plaintext_len, (uint8_t*)marshalled_data, sealed_size, (sgx_sealed_data_t*)sealed_data);
     //sealing
@@ -218,9 +220,12 @@ void save_local_time(int time)
 // Check if there is any file to delete
 int checker(unsigned char*sealed_data)
 {
+    //jinhoon
     char plaintext[file_info_size];
     uint32_t plaintext_len = file_info_size;
     sgx_unseal_data((sgx_sealed_data_t*)sealed_data, NULL, NULL, (uint8_t*)plaintext, &plaintext_len);
+    
+    ocall_print_hex(plaintext, file_info_size);
     
     char _name[64];
     char _attr;
@@ -276,6 +281,8 @@ int verifier(const char *name, const char *attr, const int *retention,  const in
     char plaintext[file_info_size];
     uint32_t plaintext_len = file_info_size;
     sgx_unseal_data((sgx_sealed_data_t*)sealed_data, NULL, NULL, (uint8_t*)plaintext, &plaintext_len);
+    
+    ocall_print_hex(plaintext, file_info_size);
     
     char _name[64];
     char _attr;
