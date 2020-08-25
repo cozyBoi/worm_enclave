@@ -919,10 +919,11 @@ int SGX_CDECL main(int argc, char *argv[])
     char _attr = 0;
     int _dir = 1;
     int _retention = 10;
-    int _mode = 0;
+    int _mode = 1;
     int ret = 0;
     save_file_info(global_eid, &ret, _name, &_attr, &_dir, &_retention, &_mode);
-    checker(global_eid, &ret, ret_encrypted_data);
+    checker(global_eid, &ret, secure_file[0][ret_hash_value][0]);
+    //마지막 파라미터 벡터로 표현해서 해보기
     //debug end
     // get time for the first time
     /*

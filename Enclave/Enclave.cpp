@@ -154,6 +154,7 @@ int save_file_info(const char *name, const char *attr, const int * dir, const in
     }
     
     // called from re_meta (by ./app RECAP)
+    //mode == 1 이면 그냥 넣기, 0이면 계산해서 넣기
     else if(*mode == 1){
         tmp.retention = *retention;
     }
