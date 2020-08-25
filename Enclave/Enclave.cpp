@@ -203,7 +203,7 @@ int save_file_info(const char *name, const char *attr, const int * dir, const in
         hash_value += name[i];
     }
     
-    ocall_pass_string(sealed_data, hash_value % 100); //, hash value 도 보내자
+    ocall_pass_string(sealed_data, hash_value % 100, dir_index); //, hash value 도 보내자
     //passing
     
     return 1;

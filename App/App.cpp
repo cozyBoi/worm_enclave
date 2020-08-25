@@ -257,13 +257,14 @@ void ocall_print_hex(unsigned char *str, int len)
      printf("\n");
 }
 
-void ocall_pass_string(unsigned char *str, int hash_value)
+void ocall_pass_string(unsigned char *str, int hash_value, int dir_index)
 {
     //factory fucntion
     ret_encrypted_data = (unsigned char*)malloc(ENC_SIZE);
     memset(ret_encrypted_data, 0, ENC_SIZE);
     memcpy(ret_encrypted_data, str, ENC_SIZE);
     ret_hash_value = hash_value;
+    secure_file[dir_index][hash_value].push_back(ret_encrypted_data);
     //jinhoon
     //memcpy passed value
 }
@@ -351,6 +352,9 @@ void *scan_dir(void *select){  // 원래는 *dir_num을 받았음
                     ecall_status = save_file_info(global_eid, &ret, myfile->d_name, &attr, &dir_num, &retention, &(choose -> mode));
                     //jinhoon
                     //여기서 리턴된 sealed_data를 저장하는 코드가 필요
+                    
+                    //+ 수정 pass_string 에서 아예 push_back 또한 해줌
+                    
                     if(ret==1)
                         LOG_V("re-saved file %s metadata into enclave\n", myfile->d_name);
                 }
@@ -724,7 +728,7 @@ void *file_receiver(void *num)
             
             //+ 수정 pass_string 함수로 빼기로 결심
             
-            secure_file[get_file->directory][ret_hash_value].push_back(ret_encrypted_data);
+            //+ 수정 pass_string 에서 아예 push_back 또한 해줌
             
             if(ret==1)
                 LOG_V("Save complete\n");
