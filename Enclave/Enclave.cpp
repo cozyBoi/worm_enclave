@@ -245,6 +245,8 @@ int checker(unsigned char*sealed_data)
     
     // file to delete
     else{
+        //jinhoon
+        //vector의 내용물은 checker를 부르는 부분에서 지움
         ocall_delete_file(_name, _attr, _dir);
         return -1;
     }
