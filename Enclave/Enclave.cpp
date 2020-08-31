@@ -55,6 +55,9 @@ unsigned char hh[3]; // hour
 unsigned char mm[3]; // min
 unsigned char ss[3]; // sec
 
+char hmac_msg[] = "soteria";
+int hmac_len = 7;
+
 const unsigned char *p_key = (const unsigned char *)"This is a key!! Yes!! :)"; // Key for generating HMAC
 const char *ip_addr = "163.239.24.149"; // time server ip addr
 const char *port_num = "7998"; // temporarily opened port 7998
@@ -195,7 +198,7 @@ int save_file_info(const char *name, const char *attr, const int * dir, const in
     ocall_print_hex(marshalled_data, file_info_size);
     
     uint32_t plaintext_len = file_info_size;
-    sgx_seal_data(0, NULL,plaintext_len, (uint8_t*)marshalled_data, sealed_size, (sgx_sealed_data_t*)sealed_data);
+    sgx_seal_data((uint32_t)hmac_len, (uint8_t*)hmac_msg, plaintext_len, (uint8_t*)marshalled_data, sealed_size, (sgx_sealed_data_t*)sealed_data);
     //sealing
     int len = strlen(name);
     int hash_value = 0;
@@ -224,7 +227,7 @@ int checker(unsigned char*sealed_data)
     //jinhoon
     char plaintext[file_info_size];
     uint32_t plaintext_len = file_info_size;
-    sgx_unseal_data((sgx_sealed_data_t*)sealed_data, NULL, NULL, (uint8_t*)plaintext, &plaintext_len);
+    sgx_unseal_data((sgx_sealed_data_t*)sealed_data, (uint8_t*)hmac_msg, (uint32_t*)&hmac_len, (uint8_t*)plaintext, &plaintext_len);
     
     unsigned char debug_txt[file_info_size];
     memcpy(debug_txt, plaintext, file_info_size);
@@ -285,7 +288,7 @@ int verifier(const char *name, const char *attr, const int *retention,  const in
     
     char plaintext[file_info_size];
     uint32_t plaintext_len = file_info_size;
-    sgx_unseal_data((sgx_sealed_data_t*)sealed_data, NULL, NULL, (uint8_t*)plaintext, &plaintext_len);
+    sgx_unseal_data((sgx_sealed_data_t*)sealed_data, (uint8_t*)hmac_msg, (uint32_t*)&hmac_len, (uint8_t*)plaintext, &plaintext_len);
     
     unsigned char debug_txt[file_info_size];
     memcpy(debug_txt, plaintext, file_info_size);
